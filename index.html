@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KEN — servo humanoid, first build review</title>
+<style>
+  :root{
+    --bg:#15161a; --panel:#1d1f25; --line:#2c2f37;
+    --ink:#e8e6e1; --dim:#8b8d96; --accent:#f0b429;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+    font-family:ui-sans-serif,-apple-system,"Inter","Segoe UI",Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased;overflow:hidden}
+  #app{display:flex;height:100%}
+  #stage{flex:1;position:relative;min-width:0;background:radial-gradient(ellipse at 50% 35%,#2a2d34 0%,#141519 72%)}
+  canvas{display:block}
+
+  #hud{position:absolute;left:26px;top:22px;pointer-events:none}
+  #hud h1{margin:0;font-size:19px;letter-spacing:.24em;font-weight:600}
+  #hud .sub{margin-top:6px;font-size:11.5px;color:var(--dim);letter-spacing:.05em;max-width:280px;line-height:1.5}
+  #hud .spec{margin-top:14px;font-size:10.5px;color:#5f626c;letter-spacing:.12em;text-transform:uppercase}
+
+  #panel{width:298px;flex:0 0 298px;background:var(--panel);border-left:1px solid var(--line);
+    padding:20px 20px 16px;overflow-y:auto}
+  #panel h2{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--dim);
+    margin:0 0 10px;font-weight:600}
+  .block{margin-bottom:22px}
+  .row{display:flex;align-items:center;gap:9px;padding:5px 0;font-size:12.5px;color:#cfcdc8;
+    cursor:pointer;user-select:none;border-radius:5px}
+  .row:hover{background:#25282f}
+  .row input{accent-color:var(--accent);margin:0;width:13px;height:13px;cursor:pointer}
+  .sw{width:9px;height:9px;border-radius:2px;flex:0 0 9px}
+  .row .nm{flex:1}
+  .row .cnt{font-size:10px;color:#5f626c}
+
+  input[type=range]{width:100%;accent-color:var(--accent);height:16px}
+  .lbl{display:flex;justify-content:space-between;font-size:11px;color:var(--dim);margin-bottom:4px}
+  button{background:#25282f;border:1px solid #32363f;color:#d8d6d1;font-size:11.5px;
+    padding:7px 10px;border-radius:6px;cursor:pointer;font-family:inherit;transition:.15s}
+  button:hover{background:#2e323b;border-color:#3d424d}
+  button.on{background:var(--accent);border-color:var(--accent);color:#17181c;font-weight:600}
+  .btnrow{display:flex;gap:6px;flex-wrap:wrap}
+  .note{font-size:10.5px;line-height:1.55;color:#6c6f79;margin-top:8px}
+  #loading{position:absolute;inset:0;display:grid;place-items:center;font-size:12px;
+    letter-spacing:.2em;color:var(--dim);text-transform:uppercase;background:#15161a;z-index:5}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage">
+    <div id="loading">building mesh…</div>
+    <div id="hud">
+      <h1>KEN</h1>
+      <div class="sub">Servo-driven humanoid desk robot · soft-shell armour, covered ball joints</div>
+      <div class="spec" id="dims">—</div>
+    </div>
+  </div>
+
+  <aside id="panel">
+    <div class="block">
+      <h2>View</h2>
+      <div class="btnrow">
+        <button id="bSpin" class="on">Turntable</button>
+        <button id="bWire">Wireframe</button>
+        <button id="bReset">Reset view</button>
+      </div>
+      <div style="margin-top:14px">
+        <div class="lbl"><span>Exploded view</span><span id="exVal">0%</span></div>
+        <input type="range" id="explode" min="0" max="100" value="0">
+      </div>
+    </div>
+
+    <div class="block">
+      <h2>Parts</h2>
+      <div id="partList"></div>
+    </div>
+
+    <div class="block">
+      <h2>Build notes</h2>
+      <div class="note">
+        337 mm tall at print scale. Shell parts print in PLA/PETG at 0.2 mm, no supports on the shells.
+        Ball joints are separate spheres with 0.3 mm clearance — print them as loose pins first and
+        check fit before committing to the full build.
+      </div>
+    </div>
+  </aside>
+</div>
+
+<script type="importmap">
+{ "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';
+
+const stage = document.getElementById('stage');
+const renderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(stage.clientWidth, stage.clientHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+stage.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(34, stage.clientWidth/stage.clientHeight, 1, 4000);
+camera.position.set(330, 250, 480);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 168, 0);
+controls.enableDamping = true;
+controls.dampingFactor = 0.07;
+controls.minDistance = 180;
+controls.maxDistance = 1400;
+controls.maxPolarAngle = Math.PI * 0.52;
+
+// ---------- lighting: soft studio
+scene.add(new THREE.HemisphereLight(0xdfe6f2, 0x1a1c21, 1.15));
+const key = new THREE.DirectionalLight(0xfff4e2, 2.5);
+key.position.set(320, 620, 420);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+const d = 420;
+Object.assign(key.shadow.camera, {left:-d, right:d, top:d, bottom:-d, near:10, far:2200});
+key.shadow.bias = -0.0008;
+scene.add(key);
+const fill = new THREE.DirectionalLight(0x9db4ff, 0.55); fill.position.set(-420, 180, 260); scene.add(fill);
+const rim  = new THREE.DirectionalLight(0xffffff, 1.1);  rim.position.set(-180, 320, -520); scene.add(rim);
+
+// ---------- ground
+const ground = new THREE.Mesh(
+  new THREE.CircleGeometry(620, 64),
+  new THREE.ShadowMaterial({color:0x000000, opacity:0.32})
+);
+ground.rotation.x = -Math.PI/2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// ---------- materials
+const matOf = {
+  shell_white: new THREE.MeshPhysicalMaterial({color:0xeeeeea, roughness:0.42, metalness:0.0, clearcoat:0.35, clearcoatRoughness:0.5}),
+  shell_grey : new THREE.MeshPhysicalMaterial({color:0xc6c6c2, roughness:0.5,  metalness:0.0}),
+  rubber     : new THREE.MeshStandardMaterial({color:0x2a2b2f, roughness:0.82, metalness:0.05}),
+  lens       : new THREE.MeshPhysicalMaterial({color:0xf5b31a, roughness:0.12, metalness:0.15, emissive:0x6b4600, emissiveIntensity:0.55, clearcoat:1}),
+  metal      : new THREE.MeshStandardMaterial({color:0x9aa0aa, roughness:0.28, metalness:1.0}),
+};
+
+// ---------- load
+new MTLLoader().load('ken.mtl', (mats) => {
+  mats.preload();
+  new OBJLoader().setMaterials(mats).load('ken.obj', (obj) => {
+    const root = new THREE.Group();
+    const groups = [];
+    obj.traverse(o => {
+      if (!o.isMesh) return;
+      o.castShadow = true; o.receiveShadow = true;
+      const m = matOf[(o.material?.name || '').split('.')[0]] || matOf.shell_white;
+      o.material = m;
+      o.userData.mat = m;
+      groups.push(o);
+    });
+    // one group per named part (OBJ g -> separate meshes already)
+    root.add(obj); scene.add(root);
+
+    const names = [...new Set(groups.map(g => g.parent.name || g.name || 'part'))].filter(Boolean);
+    buildPartList(names, groups);
+    document.getElementById('loading').style.display = 'none';
+
+    // frame the model
+    const box = new THREE.Box3().setFromObject(root);
+    const size = box.getSize(new THREE.Vector3());
+    document.getElementById('dims').textContent =
+      `${size.y.toFixed(0)} × ${size.x.toFixed(0)} × ${size.z.toFixed(0)} mm · ${groups.length} shells`;
+  });
+});
+
+// ---------- part list
+const checkboxFor = {};
+function buildPartList(names, groups) {
+  const list = document.getElementById('partList');
+  const seen = new Set();
+  groups.forEach(g => {
+    const n = g.name || 'part';
+    if (seen.has(n)) return; seen.add(n);
+    const row = document.createElement('label');
+    row.className = 'row';
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = true;
+    const sw = document.createElement('span'); sw.className = 'sw';
+    sw.style.background = '#' + g.userData.mat.color.getHexString();
+    const nm = document.createElement('span'); nm.className='nm'; nm.textContent = n.replace(/_/g,' ');
+    row.append(cb, sw, nm);
+    cb.onchange = () => { groups.forEach(x => { if (x.name === n) x.visible = cb.checked; }); };
+    list.appendChild(row);
+    checkboxFor[n] = cb;
+  });
+}
+
+// ---------- turntable
+let spin = true;
+const bSpin = document.getElementById('bSpin');
+bSpin.onclick = () => { spin = !spin; bSpin.classList.toggle('on', spin); };
+
+let wire = false;
+document.getElementById('bWire').onclick = (e) => {
+  wire = !wire; e.target.classList.toggle('on', wire);
+  scene.traverse(o => { if (o.isMesh && o.material !== ground.material)
+    Object.values(matOf).forEach(m => { m.wireframe = wire; }); });
+};
+
+document.getElementById('bReset').onclick = () => {
+  camera.position.set(330, 250, 480);
+  controls.target.set(0, 168, 0);
+  document.getElementById('explode').value = 0; applyExplode(0);
+};
+
+// ---------- explode
+const exEl = document.getElementById('explode');
+let basePos = null;
+function applyExplode(pct) {
+  const k = pct / 100;
+  document.getElementById('exVal').textContent = Math.round(pct) + '%';
+  scene.traverse(o => {
+    if (!o.isMesh || !o.userData.home) return;
+    const h = o.userData.home;
+    const dir = new THREE.Vector3(h.x, h.y - 168, h.z);
+    const len = dir.length() || 1;
+    dir.multiplyScalar(1/len);
+    o.position.set(h.x + dir.x * len * k * 0.55,
+                   h.y + dir.y * len * k * 0.55,
+                   h.z + dir.z * len * k * 0.55);
+  });
+}
+// capture home positions once meshes exist
+const captureHomes = setInterval(() => {
+  let any = false;
+  scene.traverse(o => { if (o.isMesh && o.material !== ground.material && !o.userData.home) {
+    const c = new THREE.Box3().setFromObject(o).getCenter(new THREE.Vector3());
+    o.userData.home = {x:c.x, y:c.y, z:c.z}; any = true; } });
+  if (any) clearInterval(captureHomes);
+}, 500);
+exEl.oninput = (e) => applyExplode(+e.target.value);
+
+// ---------- loop
+addEventListener('resize', () => {
+  camera.aspect = stage.clientWidth / stage.clientHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(stage.clientWidth, stage.clientHeight);
+});
+window.KEN = {camera, controls, scene, renderer, THREE};
+const clock = new THREE.Clock();
+(function animate(){
+  requestAnimationFrame(animate);
+  const t = clock.getDelta();
+  if (spin) {
+    const a = 0.18 * t;
+    // orbit camera around target instead of spinning mesh (keeps shadows sane)
+    const off = camera.position.clone().sub(controls.target);
+    off.applyAxisAngle(new THREE.Vector3(0,1,0), a);
+    camera.position.copy(controls.target).add(off);
+  }
+  controls.update();
+  renderer.render(scene, camera);
+})();
+</script>
+</body>
+</html>
