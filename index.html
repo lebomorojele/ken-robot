@@ -53,7 +53,7 @@
     <div id="loading">building mesh…</div>
     <div id="hud">
       <h1>KEN</h1>
-      <div class="sub">Servo-driven humanoid desk robot · soft-shell armour, covered ball joints</div>
+      <div class="sub">Servo-driven humanoid desk robot · soft-shell armour, covered ball joints<br>drag to orbit · scroll to zoom · untick parts to inspect</div>
       <div class="spec" id="dims">—</div>
     </div>
   </div>
@@ -78,11 +78,23 @@
     </div>
 
     <div class="block">
+      <h2>Servo plan — first build</h2>
+      <div class="note">
+        6 servos is plenty for a first robot: head pan + tilt, shoulder pitch ×2, elbow ×2.
+        All SG90 / MG90S. Legs stay fixed as a standing pose. Add hip + knee servos later
+        (4 more) once the upper body moves cleanly.
+      </div>
+    </div>
+
+    <div class="block">
       <h2>Build notes</h2>
       <div class="note">
-        337 mm tall at print scale. Shell parts print in PLA/PETG at 0.2 mm, no supports on the shells.
-        Ball joints are separate spheres with 0.3 mm clearance — print them as loose pins first and
-        check fit before committing to the full build.
+        348 mm tall at print scale (17 shells). Shell parts print in PLA/PETG at 0.2 mm layer,
+        supports only under the pauldrons and the boot arches.
+      </div>
+      <div class="note" style="margin-top:10px">
+        Joint balls are sized 25–27 mm with 0.3 mm running clearance so an SG90 / MG90S horn can
+        drive them once the servo pockets are cut.
       </div>
     </div>
   </aside>
